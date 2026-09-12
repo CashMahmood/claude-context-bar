@@ -6,16 +6,17 @@ by session name, not just by folder.
 
 ```
                     ╭───────────────────────╮
-                    │  ✳   ▬▬▬▬▬▬▬▭▭   86%  │
+                    │  ✳   ▬▬▭▭▭▭▭▭▭   16%  │
                     ╰───────────────────────╯
                        ↑       ↑         ↑
-                     mark    track    headroom
+                     mark    track     used
 ```
 
 It sits at the top-centre of the screen, refreshes every few seconds, and turns
-amber then red as the window fills up. The track and the number say the same
-thing: both show how much context is **left**, so the bar drains as you use it.
-Hover for the session name, or click to switch sessions.
+amber then red as the window fills up. The track and the number both show how
+much context is **used**, counting upward, so they agree with what `/context`
+reports inside Claude Code. Hover for the session name, or click to switch
+sessions.
 
 ## Why
 
@@ -30,7 +31,7 @@ number in view while you work, so a compaction never takes you by surprise.
 - **Session picker.** Click the bar to switch between recent sessions, or leave
   it on **Auto** to follow whichever one you are using right now.
 - **Show / hide.** `Super+Shift+C` from anywhere, a menu item, or the CLI.
-- **Colour-coded headroom.** Green above 50 % left, amber below, red under 20 %.
+- **Colour-coded headroom.** Green below 50 % used, amber beyond, red past 80 %.
 - **Multi-window aware.** Detects both the 200 k and 1 M context windows.
 - **Reads numbers only.** It parses token counts, the session id, its title and
   its working directory. It never reads, stores or transmits message content,
@@ -122,8 +123,10 @@ Claude Code appends a JSON Lines transcript per session under
 
 1. picks the most recently modified transcript (or the one you pinned);
 2. scans backwards for the last `usage` object and adds up `input_tokens`,
-   `cache_read_input_tokens`, `cache_creation_input_tokens` and `output_tokens`
-   — the last assistant turn's prompt is the whole live context;
+   `cache_read_input_tokens` and `cache_creation_input_tokens` — the last
+   assistant turn's prompt *is* the live context. The reply's `output_tokens`
+   are deliberately excluded, so the figure tracks `/context` rather than
+   running slightly ahead of it;
 3. takes the session name from the newest `aiTitle` record and the project from
    `cwd`.
 
@@ -141,8 +144,9 @@ If the measured usage exceeds the assumed limit, it corrects itself upward.
   would require a GNOME Shell extension.
 - **The window size is inferred**, not reported. If you switch a single session
   to a different model mid-flight, set `CLAUDE_CTX_LIMIT`.
-- **The percentage is the raw context window**, not the point at which Claude
-  Code decides to auto-compact, which is lower.
+- **The percentage is of the raw context window.** Claude Code reserves an
+  auto-compact buffer (33 k on a 1 M window) that it reports separately, so
+  compaction begins slightly before the bar reads 100 %.
 
 ## Uninstall
 

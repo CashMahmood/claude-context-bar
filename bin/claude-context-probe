@@ -134,10 +134,12 @@ def measure(path):
     out["age_s"] = int(time.time() - os.path.getmtime(path))
 
     if usage:
+        # The live context is the prompt of the last assistant turn: fresh
+        # input plus everything replayed from cache. Its reply is excluded,
+        # so this matches what /context reports.
         used = (usage.get("input_tokens", 0)
                 + usage.get("cache_read_input_tokens", 0)
-                + usage.get("cache_creation_input_tokens", 0)
-                + usage.get("output_tokens", 0))
+                + usage.get("cache_creation_input_tokens", 0))
         lim = limit_for(model)
         if used > lim:            # session is on a bigger window than guessed
             lim = 1_000_000

@@ -256,9 +256,12 @@ class ContextBar(Gtk.Window):
 
         ok   = s.get("ok")
         left = s.get("pct_left", 0.0) if ok else 0.0
+        used = s.get("pct_used", 0.0) if ok else 0.0
 
-        if ok and left >= 1:
-            self.fill.set_size_request(max(3, int(TRACK_W * left / 100.0)), TRACK_H)
+        # The track fills as context is consumed, so the bar and the number
+        # agree with /context, which counts usage upward.
+        if ok and used >= 1:
+            self.fill.set_size_request(max(3, int(TRACK_W * used / 100.0)), TRACK_H)
             self.fill.show()
         else:
             self.fill.hide()
@@ -269,7 +272,7 @@ class ContextBar(Gtk.Window):
         if ok:
             fc.add_class("ample" if left > 50 else "tight" if left > 20 else "low")
 
-        self.pct.set_text(f"{left:.0f}%" if ok else "--")
+        self.pct.set_text(f"{used:.0f}%" if ok else "--")
         ctx = self.pct.get_style_context()
         (ctx.remove_class if ok else ctx.add_class)("stale")
 
@@ -278,6 +281,7 @@ class ContextBar(Gtk.Window):
             f"{display_name(s)}\n"
             f"{project} · {s.get('id', '?')[:8]} · {ago(max(0, s.get('age_s', 0)))}\n"
             f"{human(s.get('used', 0))} of {human(s.get('limit', 0))} used"
+            f" · {left:.0f}% left"
             f" · {'auto' if self.pinned == 'auto' else 'pinned'}\n"
             "click to switch session · Super+Shift+C to hide")
         return True
@@ -298,7 +302,7 @@ class ContextBar(Gtk.Window):
             menu.append(Gtk.SeparatorMenuItem())
         for s in sessions:
             item = Gtk.CheckMenuItem(
-                label=f"{display_name(s)}  ·  {s['pct_left']:.0f}%  ·  {ago(s['age_s'])}")
+                label=f"{display_name(s)}  ·  {s['pct_used']:.0f}% used  ·  {ago(s['age_s'])}")
             item.set_draw_as_radio(True)
             item.set_active(self.pinned == s["id"])
             item.connect("toggled", self.on_pick, s["id"])
