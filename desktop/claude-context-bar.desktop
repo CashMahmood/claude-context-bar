@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Context Bar
+GenericName=Context usage overlay
+Comment=Track remaining Claude Code context in a top-centre overlay
+Exec=claude-context-bar --show
+Icon=claude-context-bar
+Terminal=false
+Categories=Utility;Monitor;
+Keywords=claude;context;token;usage;overlay;
+StartupNotify=false
+Actions=Toggle;Quit;
+
+[Desktop Action Toggle]
+Name=Show / hide
+Exec=claude-context-bar --toggle
+
+[Desktop Action Quit]
+Name=Quit
+Exec=claude-context-bar --quit

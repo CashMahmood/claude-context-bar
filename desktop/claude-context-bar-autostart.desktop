@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Context Bar
+Comment=Track remaining Claude Code context in a top-centre overlay
+Exec=claude-context-bar
+Icon=claude-context-bar
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5

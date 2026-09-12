@@ -1,0 +1,471 @@
+#!/usr/bin/env python3
+"""A minimal context gauge pinned to the top-centre of the screen.
+
+  claude-context-bar                  -> run the gauge (or reveal a running one)
+  claude-context-bar --toggle         -> show/hide a running gauge
+  claude-context-bar --show|--hide    -> force one or the other
+  claude-context-bar --status         -> report whether it is running
+  claude-context-bar --quit           -> stop it
+  claude-context-bar --install-hotkey -> bind Super+Shift+C to --toggle
+  claude-context-bar --remove-hotkey  -> drop that binding again
+
+Forced onto XWayland: a Wayland compositor gives a normal client no say in its
+own position or stacking, while the X11 path honours both. Drawn with plain GTK
+widgets and CSS, so it needs no cairo bindings.
+"""
+import os, sys, json, signal, subprocess
+
+os.environ.setdefault("GDK_BACKEND", "x11")
+
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
+
+WIDTH    = int(os.environ.get("CLAUDE_BAR_W", 360))
+HEIGHT   = int(os.environ.get("CLAUDE_BAR_H", 26))
+Y_OFFSET = int(os.environ.get("CLAUDE_BAR_Y", 38))   # clears the GNOME top bar
+INTERVAL = int(os.environ.get("CLAUDE_BAR_INTERVAL", 4))
+PASSTHRU = os.environ.get("CLAUDE_BAR_CLICKTHROUGH") == "1"
+
+TRACK_W, TRACK_H = 64, 5
+LOGO_PX  = 15
+
+PREFIX  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROBE   = (os.path.join(PREFIX, "bin", "claude-context-probe")
+           if os.path.exists(os.path.join(PREFIX, "bin", "claude-context-probe"))
+           else os.path.expanduser("~/.local/bin/claude-context-probe"))
+LOGO    = next((p for p in (os.path.join(PREFIX, "share", "logo.svg"),
+                            os.path.expanduser(
+                                "~/.local/share/claude-context-bar/logo.svg"))
+                if os.path.exists(p)), "")
+CONFIG  = os.path.expanduser("~/.config/claude-context-bar.json")
+STATE   = os.path.expanduser("~/.cache/claude-context-bar.state")
+HOTKEY  = "<Super><Shift>c"
+
+CSS = f"""
+window {{ background-color: transparent; }}
+
+#shell {{
+    background-color: rgba(20,20,24,0.86);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: {HEIGHT // 2}px;
+}}
+#name {{
+    color: rgba(255,255,255,0.58);
+    font-size: 11px;
+}}
+#pct {{
+    color: rgba(255,255,255,0.96);
+    font-size: 11px;
+    font-weight: bold;
+}}
+#name.stale, #pct.stale {{ color: rgba(255,255,255,0.34); }}
+
+#track {{
+    background-color: rgba(255,255,255,0.13);
+    border-radius: {TRACK_H // 2 + 1}px;
+}}
+#fill {{ border-radius: {TRACK_H // 2 + 1}px; }}
+#fill.ample {{ background-color: #5BC98A; }}
+#fill.tight {{ background-color: #E3B341; }}
+#fill.low   {{ background-color: #E5534B; }}
+"""
+
+
+def human(n):
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}k"
+    return str(n)
+
+
+def ago(seconds):
+    if seconds < 60:
+        return "now"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    if seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    return f"{seconds // 86400}d ago"
+
+
+def display_name(s):
+    """Prefer the session's own title, fall back to its project folder."""
+    return (s.get("title")
+            or os.path.basename(s.get("project", "").rstrip("/"))
+            or "untitled session")
+
+
+def load_config():
+    try:
+        with open(CONFIG) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(cfg):
+    try:
+        os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+        with open(CONFIG, "w") as fh:
+            json.dump(cfg, fh)
+    except OSError:
+        pass
+
+
+def write_state(visible):
+    """GLib only forwards a fixed set of signals, so --hide cannot have one of
+    its own; it reads this instead to decide whether a toggle is needed."""
+    try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        with open(STATE, "w") as fh:
+            fh.write("visible" if visible else "hidden")
+    except OSError:
+        pass
+
+
+def read_state():
+    try:
+        with open(STATE) as fh:
+            return fh.read().strip()
+    except OSError:
+        return "unknown"
+
+
+def probe(args):
+    try:
+        out = subprocess.run([PROBE] + args, capture_output=True, text=True,
+                             timeout=20).stdout
+        return json.loads(out)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+class ContextBar(Gtk.Window):
+    def __init__(self):
+        super().__init__(type=Gtk.WindowType.POPUP)
+        self.pinned = load_config().get("session", "auto")
+        self.muting = False       # suppress menu callbacks during rebuild
+
+        self.set_decorated(False)
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_accept_focus(False)
+        self.set_focus_on_map(False)
+        self.set_type_hint(Gdk.WindowTypeHint.DOCK)
+        self.set_app_paintable(True)
+        self.set_size_request(WIDTH, HEIGHT)
+        self.stick()                      # follow the user across workspaces
+
+        visual = self.get_screen().get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS.encode())
+        Gtk.StyleContext.add_provider_for_screen(
+            self.get_screen(), provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        # --- the mark, hard left ---
+        logo = Gtk.Image()
+        if LOGO:
+            try:
+                logo.set_from_pixbuf(
+                    GdkPixbuf.Pixbuf.new_from_file_at_size(LOGO, LOGO_PX, LOGO_PX))
+            except GLib.Error:
+                pass
+        logo.set_valign(Gtk.Align.CENTER)
+
+        # --- session name, takes the slack ---
+        self.name = Gtk.Label(name="name")
+        self.name.set_ellipsize(3)            # Pango.EllipsizeMode.END
+        self.name.set_max_width_chars(24)
+        self.name.set_xalign(0.0)
+        self.name.set_valign(Gtk.Align.CENTER)
+
+        # --- slim track, hard right of the name ---
+        self.fill = Gtk.EventBox(name="fill")
+        self.fill.set_size_request(0, TRACK_H)
+        placer = Gtk.Fixed()
+        placer.put(self.fill, 0, 0)
+        track = Gtk.EventBox(name="track")
+        track.set_size_request(TRACK_W, TRACK_H)
+        track.add(placer)
+        track_wrap = Gtk.Box()
+        track_wrap.set_valign(Gtk.Align.CENTER)
+        track_wrap.pack_start(track, False, False, 0)
+
+        # --- percentage, hard right ---
+        self.pct = Gtk.Label(name="pct")
+        self.pct.set_width_chars(4)
+        self.pct.set_xalign(1.0)
+        self.pct.set_valign(Gtk.Align.CENTER)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        row.set_margin_start(10)
+        row.set_margin_end(11)
+        row.pack_start(logo, False, False, 0)
+        row.pack_start(self.name, True, True, 0)
+        row.pack_start(track_wrap, False, False, 0)
+        row.pack_start(self.pct, False, False, 0)
+
+        self.shell = Gtk.EventBox(name="shell")
+        self.shell.add(row)
+        self.shell.connect("button-press-event", self.on_click)
+        self.add(self.shell)
+
+        self.connect("realize", self.on_realize)
+        self.connect("destroy", Gtk.main_quit)
+        self.connect("map", lambda *_: write_state(True))
+        self.connect("unmap", lambda *_: write_state(False))
+
+        # Let the hotkey, the launcher or any CLI call drive visibility.
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.toggle)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR2, self.reveal)
+
+        self.refresh()
+        GLib.timeout_add_seconds(INTERVAL, self.refresh)
+
+    # -- placement ---------------------------------------------------------
+    def on_realize(self, _w):
+        if PASSTHRU:
+            self.get_window().set_pass_through(True)
+        self.reposition()
+
+    def reposition(self):
+        monitor = Gdk.Display.get_default().get_primary_monitor()
+        geo = monitor.get_geometry() if monitor else None
+        if geo:
+            self.move(geo.x + max(0, (geo.width - WIDTH) // 2), geo.y + Y_OFFSET)
+
+    def toggle(self, *_):
+        self.hide() if self.get_visible() else self.reveal()
+        return True
+
+    def reveal(self, *_):
+        self.show_all()
+        self.reposition()
+        return True
+
+    # -- data --------------------------------------------------------------
+    def refresh(self):
+        s = probe([] if self.pinned == "auto" else ["--session", self.pinned])
+        if s is None or (not s.get("ok") and self.pinned != "auto"):
+            # The pinned session may have been deleted; fall back rather than
+            # sit on a dead reading.
+            s = probe([]) or {"ok": False}
+        s = s or {"ok": False}
+
+        ok   = s.get("ok")
+        left = s.get("pct_left", 0.0) if ok else 0.0
+        used = s.get("pct_used", 0.0) if ok else 0.0
+
+        if ok and used >= 1:
+            self.fill.set_size_request(max(3, int(TRACK_W * used / 100.0)), TRACK_H)
+            self.fill.show()
+        else:
+            self.fill.hide()
+
+        fc = self.fill.get_style_context()
+        for c in ("ample", "tight", "low"):
+            fc.remove_class(c)
+        if ok:
+            fc.add_class("ample" if left > 50 else "tight" if left > 20 else "low")
+
+        self.name.set_text(display_name(s) if ok else "no active session")
+        self.pct.set_text(f"{left:.0f}%" if ok else "--")
+        for widget in (self.name, self.pct):
+            ctx = widget.get_style_context()
+            (ctx.remove_class if ok else ctx.add_class)("stale")
+
+        project = os.path.basename(s.get("project", "").rstrip("/")) or "unknown"
+        self.shell.set_tooltip_text(
+            f"{display_name(s)}\n"
+            f"{project} · {s.get('id', '?')[:8]} · {ago(max(0, s.get('age_s', 0)))}\n"
+            f"{human(s.get('used', 0))} of {human(s.get('limit', 0))} used"
+            f" · {'auto' if self.pinned == 'auto' else 'pinned'}\n"
+            "click to switch session · Super+Shift+C to hide")
+        return True
+
+    # -- menu --------------------------------------------------------------
+    def on_click(self, _w, event):
+        menu = Gtk.Menu()
+
+        self.muting = True
+        auto = Gtk.CheckMenuItem(label="Auto — newest session")
+        auto.set_draw_as_radio(True)
+        auto.set_active(self.pinned == "auto")
+        auto.connect("toggled", self.on_pick, "auto")
+        menu.append(auto)
+
+        sessions = probe(["--list"]) or []
+        if sessions:
+            menu.append(Gtk.SeparatorMenuItem())
+        for s in sessions:
+            item = Gtk.CheckMenuItem(
+                label=f"{display_name(s)}  ·  {s['pct_left']:.0f}%  ·  {ago(s['age_s'])}")
+            item.set_draw_as_radio(True)
+            item.set_active(self.pinned == s["id"])
+            item.connect("toggled", self.on_pick, s["id"])
+            menu.append(item)
+        self.muting = False
+
+        menu.append(Gtk.SeparatorMenuItem())
+        hide = Gtk.MenuItem(label="Hide  (Super+Shift+C)")
+        hide.connect("activate", lambda *_: self.hide())
+        menu.append(hide)
+
+        quit_it = Gtk.MenuItem(label="Quit")
+        quit_it.connect("activate", lambda *_: Gtk.main_quit())
+        menu.append(quit_it)
+
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    def on_pick(self, item, session_id):
+        if self.muting or not item.get_active():
+            return
+        self.pinned = session_id
+        cfg = load_config()
+        cfg["session"] = session_id
+        save_config(cfg)
+        self.refresh()
+
+
+# -- out-of-process control ------------------------------------------------
+def running_pids():
+    me = os.getpid()
+    pids = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) == me:
+            continue
+        try:
+            with open(f"/proc/{entry}/cmdline", "rb") as fh:
+                cmd = fh.read().decode("utf-8", "ignore")
+            with open(f"/proc/{entry}/comm") as fh:
+                comm = fh.read().strip()
+        except OSError:
+            continue
+        # Require the interpreter itself: a shell that merely mentions the path
+        # on its command line would otherwise be killed by the signal.
+        if (comm.startswith("python") and "claude-context-bar" in cmd
+                and not any(f in cmd for f in ("--toggle", "--show", "--hide",
+                                               "--status", "--quit",
+                                               "--install-hotkey",
+                                               "--remove-hotkey"))):
+            pids.append(int(entry))
+    return pids
+
+
+def install_hotkey():
+    """Bind Super+Shift+C to --toggle via a GNOME custom keybinding."""
+    base = "org.gnome.settings-daemon.plugins.media-keys"
+    prefix = f"/{base.replace('.', '/')}/custom-keybindings/"
+    cmd = f"{os.path.abspath(sys.argv[0])} --toggle"
+
+    existing = subprocess.run(["gsettings", "get", base, "custom-keybindings"],
+                              capture_output=True, text=True).stdout.strip()
+    paths = [p.strip().strip("'\"") for p in
+             existing.strip("[]").split(",") if p.strip() not in ("", "@as")]
+
+    # Reuse our own slot if it is already registered, rather than piling up.
+    slot = None
+    for p in paths:
+        got = subprocess.run(["gsettings", "get", f"{base}.custom-keybinding:{p}",
+                              "command"], capture_output=True, text=True).stdout
+        if "claude-context-bar" in got:
+            slot = p
+            break
+    if slot is None:
+        n = 0
+        while f"{prefix}custom{n}/" in paths:
+            n += 1
+        slot = f"{prefix}custom{n}/"
+        paths.append(slot)
+
+    schema = f"{base}.custom-keybinding:{slot}"
+    for key, val in (("name", "Toggle Claude context bar"),
+                     ("command", cmd), ("binding", HOTKEY)):
+        subprocess.run(["gsettings", "set", schema, key, val], check=False)
+    subprocess.run(["gsettings", "set", base, "custom-keybindings",
+                    "[" + ", ".join(f"'{p}'" for p in paths) + "]"], check=False)
+    print(f"bound {HOTKEY} -> {cmd}\n  slot: {slot}")
+
+
+def remove_hotkey():
+    """Drop our GNOME custom keybinding, leaving any others untouched."""
+    base = "org.gnome.settings-daemon.plugins.media-keys"
+    existing = subprocess.run(["gsettings", "get", base, "custom-keybindings"],
+                              capture_output=True, text=True).stdout.strip()
+    paths = [p.strip().strip("'\"") for p in
+             existing.strip("[]").split(",") if p.strip() not in ("", "@as")]
+
+    keep = []
+    for p in paths:
+        schema = f"{base}.custom-keybinding:{p}"
+        got = subprocess.run(["gsettings", "get", schema, "command"],
+                             capture_output=True, text=True).stdout
+        if "claude-context-bar" in got:
+            subprocess.run(["gsettings", "reset-recursively", schema], check=False)
+            print(f"removed binding at {p}")
+        else:
+            keep.append(p)
+    subprocess.run(["gsettings", "set", base, "custom-keybindings",
+                    "[" + ", ".join(f"'{p}'" for p in keep) + "]"], check=False)
+
+
+def main():
+    args = sys.argv[1:]
+
+    if "--remove-hotkey" in args:
+        remove_hotkey()
+        return
+
+    if "--install-hotkey" in args:
+        install_hotkey()
+        return
+
+    if "--status" in args:
+        pids = running_pids()
+        print(f"running (pid {', '.join(map(str, pids))}) · {read_state()}"
+              if pids else "not running")
+        return
+
+    pids = running_pids()
+
+    if "--quit" in args:
+        for pid in pids:
+            os.kill(pid, signal.SIGTERM)
+        return
+
+    if "--hide" in args:
+        if read_state() == "visible":
+            for pid in pids:
+                os.kill(pid, signal.SIGUSR1)
+        return
+
+    if any(f in args for f in ("--toggle", "--show")):
+        sig = signal.SIGUSR1 if "--toggle" in args else signal.SIGUSR2
+        for pid in pids:
+            os.kill(pid, sig)
+        if not pids:                       # nothing to signal; start it
+            os.execv(sys.executable, [sys.executable, os.path.abspath(sys.argv[0])])
+        return
+
+    if pids:            # single instance: reveal the one already running
+        for pid in pids:
+            os.kill(pid, signal.SIGUSR2)
+        return
+
+    ContextBar().show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()
