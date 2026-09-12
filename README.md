@@ -4,13 +4,11 @@ A minimal always-on-top overlay for Linux that shows how much **context window**
 is left in your running [Claude Code](https://claude.com/claude-code) session —
 by session name, not just by folder.
 
-```
-                    ╭───────────────────────╮
-                    │  ✳   ▬▬▭▭▭▭▭▭▭   16%  │
-                    ╰───────────────────────╯
-                       ↑       ↑         ↑
-                     mark    track     used
-```
+<p align="center">
+  <img src="docs/preview.png" alt="The bar at 17%, 62% and 91% of the context window used" width="194">
+</p>
+
+<p align="center"><sub>Shown at actual size — 150&times;26&nbsp;px.</sub></p>
 
 It sits at the top-centre of the screen, refreshes every few seconds, and turns
 amber then red as the window fills up. The track and the number both show how
@@ -96,8 +94,9 @@ claude-context-probe --session ID # one specific session
 
 ```json
 {"id": "6e843c67-…", "title": "Context usage progress bar overlay",
- "project": "/home/you/work", "used": 118437, "limit": 1000000,
- "pct_used": 11.8, "pct_left": 88.2, "model": "claude-opus-5", "ok": true}
+ "project": "/home/you/work", "used": 173036, "limit": 1000000,
+ "pct_used": 17.3, "pct_left": 82.7, "model": "claude-opus-5",
+ "age_s": 2, "ok": true}
 ```
 
 That makes it easy to reuse elsewhere — a tmux status line, Waybar, Polybar,
@@ -156,6 +155,18 @@ If the measured usage exceeds the assumed limit, it corrects itself upward.
 
 Removes every file, the autostart entry and the keyboard shortcut, leaving any
 other custom shortcuts you have alone.
+
+## Development
+
+There is no build step — both commands are single-file Python scripts. Edit
+them in place and re-run `./install.sh`.
+
+The image at the top of this file is rendered from the real widgets rather than
+mocked up, so it cannot drift away from the actual design:
+
+```bash
+python3 docs/render-preview.py
+```
 
 ## Contributing
 
