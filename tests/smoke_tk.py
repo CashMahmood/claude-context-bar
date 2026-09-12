@@ -40,6 +40,7 @@ class FakeCanvas:
     def create_polygon(self, *a, **k):   return self._add("polygon", a, k)
     def create_rectangle(self, *a, **k): return self._add("rect", a, k)
     def create_text(self, *a, **k):      return self._add("text", a, k)
+    def create_image(self, *a, **k):     return self._add("image", a, k)
     def coords(self, i, *a):             self.items[i].args = a
     def itemconfig(self, i, **k):        self.items[i].kw.update(k)
     def bind(self, seq, fn):             calls.setdefault("binds", {})[seq] = fn
@@ -93,6 +94,13 @@ class FakeRoot(FakeWidget):
     def mainloop(self):  pass
 
 
+class FakePhoto:
+    def __init__(self, file=None, **kw):
+        if not file or not os.path.exists(file):
+            raise FakeTclError("no such image")
+        calls["photo"] = file
+
+
 class FakeTclError(Exception):
     pass
 
@@ -101,6 +109,7 @@ def fake_tkinter():
     m = types.ModuleType("tkinter")
     m.Tk, m.Canvas, m.Menu = FakeRoot, FakeCanvas, FakeMenu
     m.Toplevel, m.Label, m.StringVar = FakeWidget, FakeWidget, FakeVar
+    m.PhotoImage = FakePhoto
     m.TclError = FakeTclError
     return m
 
@@ -115,13 +124,19 @@ def main():
     model = bar.Model()
     bar.run_tk(model)                     # returns at the stubbed mainloop
 
+    images = [i for i in calls["items"] if i.kind == "image"]
     polys = [i for i in calls["items"] if i.kind == "polygon"]
     rects = [i for i in calls["items"] if i.kind == "rect"]
     texts = [i for i in calls["items"] if i.kind == "text"]
 
     problems = []
-    if len(polys) != 12:
-        problems.append(f"expected 12 starburst rays, drew {len(polys)}")
+    # The mark is a pre-rendered PNG when available, since Tk cannot
+    # antialias polygons; the drawn starburst is only the fallback.
+    if images:
+        if polys:
+            problems.append("drew both the bitmap mark and the fallback rays")
+    elif len(polys) != 12:
+        problems.append(f"expected 12 fallback rays, drew {len(polys)}")
     if len(rects) != 2:
         problems.append(f"expected track + fill, drew {len(rects)} rects")
     if len(texts) != 1:
@@ -171,7 +186,7 @@ def main():
         problems.append(f"show command ignored (state={bar.read_state()})")
     bar.clear_runtime()
 
-    print(f"  starburst rays : {len(polys)}")
+    print(f"  mark           : {'PNG ' + os.path.basename(calls['photo']) if images else str(len(polys)) + ' drawn rays'}")
     print(f"  track + fill   : {len(rects)}")
     print(f"  label text     : {texts[0].kw.get('text') if texts else '-'}")
     print(f"  geometry       : {calls.get('geometry')}")

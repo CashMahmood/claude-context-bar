@@ -89,8 +89,9 @@ def install(args):
         shutil.copy2(os.path.join(SRC, "bin", name), dst)
         if not IS_WIN:
             os.chmod(dst, 0o755)
-    shutil.copy2(os.path.join(SRC, "share", "logo.svg"),
-                 os.path.join(t["share"], "logo.svg"))
+    for name in os.listdir(os.path.join(SRC, "share")):
+        shutil.copy2(os.path.join(SRC, "share", name),
+                     os.path.join(t["share"], name))
     bar = os.path.join(t["bin"], APP)
     py = python_for_gui()
     print(f"    binaries -> {t['bin']}")

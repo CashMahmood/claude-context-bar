@@ -48,6 +48,9 @@ mkdir -p "$BIN" "$SHARE" "$ICONS" "$APPS"
 install -m 755 "$SRC/bin/claude-context-bar"   "$BIN/claude-context-bar"
 install -m 755 "$SRC/bin/claude-context-probe" "$BIN/claude-context-probe"
 install -m 644 "$SRC/share/logo.svg"           "$SHARE/logo.svg"
+for png in "$SRC"/share/logo-*.png; do
+  [ -e "$png" ] && install -m 644 "$png" "$SHARE/$(basename "$png")"
+done
 install -m 644 "$SRC/share/logo.svg"           "$ICONS/claude-context-bar.svg"
 install -m 644 "$SRC/desktop/claude-context-bar.desktop" "$APPS/claude-context-bar.desktop"
 pin_exec "$APPS/claude-context-bar.desktop"

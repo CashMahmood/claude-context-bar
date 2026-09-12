@@ -45,13 +45,28 @@ toolkits, picked automatically.
 | Platform | Toolkit | Status |
 | --- | --- | --- |
 | Linux (GNOME/Wayland, X11) | GTK 3, falls back to Tk | **Tested** — developed on Ubuntu 24.04 / GNOME 46 / Wayland |
-| macOS | Tk | Untested — please report what you find |
-| Windows | Tk | Untested — please report what you find |
+| macOS | Tk | Tk backend verified running; macOS integration untested |
+| Windows | Tk | Tk backend verified running; Windows integration untested |
 
-I do not own a Mac or a Windows machine. Both are written to the documented
-behaviour of Tk and each platform's autostart conventions, and the shared parts
-— reading sessions, the picker, show/hide, single-instance — are exercised on
-Linux. Bug reports from either are very welcome.
+Both backends have been run for real and captured:
+
+<p align="center">
+  <img src="docs/preview.png" alt="GTK backend" width="194">
+  &nbsp;&nbsp;
+  <img src="docs/preview-tk.png" alt="Tk backend" width="194">
+</p>
+<p align="center"><sub>GTK on the left, Tk on the right — both at actual size.</sub></p>
+
+The Tk backend was exercised on Linux against a real Tk 9.0. What remains
+unverified on macOS and Windows is the platform integration around it: window
+stacking for a borderless always-on-top window, the LaunchAgent and Startup
+entries, and the desktop launchers. I own neither machine, so bug reports are
+very welcome.
+
+Tk draws a square-cornered pill rather than the rounded one, deliberately: Tk
+cannot antialias canvas polygons, so a drawn rounded corner comes out visibly
+stair-stepped. For the same reason the mark is a pre-rendered PNG there instead
+of drawn geometry.
 
 Force a toolkit with `--backend gtk` or `--backend tk`.
 
@@ -241,8 +256,8 @@ exercised on a machine with neither Tk nor a display:
 python3 tests/smoke_tk.py
 ```
 
-It proves the code runs. It proves nothing about how it looks, which is why
-macOS and Windows are marked untested above.
+It proves the code runs without a display. To see it, run it against a real Tk
+(`--backend tk`); that is how `docs/preview-tk.png` was captured.
 
 ## Contributing
 

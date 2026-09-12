@@ -87,6 +87,14 @@ LOGO  = _find(os.path.join(PREFIX, "share", "logo.svg"),
               os.path.join(PREFIX, "share", APP, "logo.svg"))
 
 
+def logo_png(px):
+    """Tk has no antialiasing on canvas polygons, so it uses a pre-rendered
+    mark instead of drawing one."""
+    return _find(os.path.join(PREFIX, "share", f"logo-{px}.png"),
+                 os.path.expanduser(f"~/.local/share/{APP}/logo-{px}.png"),
+                 os.path.join(PREFIX, "share", APP, f"logo-{px}.png"))
+
+
 # ------------------------------------------------------------------ helpers
 def human(n):
     if n >= 1_000_000:
@@ -518,23 +526,16 @@ def run_tk(model):
         except tk.TclError:
             pass
 
-    # Per-pixel transparency only exists on Windows; elsewhere fall back to a
-    # solid pill, which simply means square window corners.
-    keyed = False
-    if IS_WIN:
-        try:
-            root.wm_attributes("-transparentcolor", KEY)
-            keyed = True
-        except tk.TclError:
-            keyed = False
-    if not keyed:
-        try:
-            root.wm_attributes("-alpha", 0.94)
-        except tk.TclError:
-            pass
+    # A rounded pill would have to be drawn as a polygon, and Tk does not
+    # antialias those, so it comes out visibly stair-stepped. A solid
+    # rectangle reads as deliberate instead of badly drawn.
+    try:
+        root.wm_attributes("-alpha", 0.96)
+    except tk.TclError:
+        pass
 
-    canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, highlightthickness=0,
-                       bd=0, bg=KEY if keyed else SHELL_BG)
+    canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT,
+                       highlightthickness=0, bd=0, bg=SHELL_BG)
     canvas.pack()
 
     def round_rect(x1, y1, x2, y2, r, **kw):
@@ -543,15 +544,23 @@ def run_tk(model):
                x1, y1 + r, x1, y1]
         return canvas.create_polygon(pts, smooth=True, **kw)
 
-    if keyed:
-        round_rect(0, 0, WIDTH - 1, HEIGHT - 1, HEIGHT // 2,
-                   fill=SHELL_BG, outline="#2A2A31")
-
     pad = 10
     logo_r = LOGO_PX / 2.0
     cx, cy = pad + logo_r, HEIGHT / 2.0
-    for poly in starburst(cx, cy, logo_r):
-        canvas.create_polygon(poly, fill=CLAY, outline="")
+
+    # Prefer the antialiased bitmap; fall back to polygons if Tk is too old to
+    # read PNG or the file is missing.
+    mark = logo_png(LOGO_PX)
+    root._logo = None
+    if mark:
+        try:
+            root._logo = tk.PhotoImage(file=mark)
+            canvas.create_image(cx, cy, image=root._logo)
+        except tk.TclError:
+            root._logo = None
+    if root._logo is None:
+        for poly in starburst(cx, cy, logo_r):
+            canvas.create_polygon(poly, fill=CLAY, outline="")
 
     track_x = pad + LOGO_PX + 9
     track_y = (HEIGHT - TRACK_H) / 2.0
