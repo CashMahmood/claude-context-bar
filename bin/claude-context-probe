@@ -214,7 +214,10 @@ def main():
 
     path = None
     if "--session" in args:
-        sid = args[args.index("--session") + 1]
+        i = args.index("--session") + 1
+        if i >= len(args) or not args[i].strip():
+            sys.exit("claude-context-probe: --session needs a session id")
+        sid = args[i]
         for p in transcripts():
             if os.path.splitext(os.path.basename(p))[0] == sid:
                 path = p
