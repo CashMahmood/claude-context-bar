@@ -529,19 +529,26 @@ def run_gtk(model):
             self.hide_tip()
             if not self.get_visible():
                 return False
-            win = Gtk.Window(type=Gtk.WindowType.POPUP, name="tip")
+            win = Gtk.Window(type=Gtk.WindowType.POPUP)
             win.set_keep_above(True)
             win.set_accept_focus(False)
+            # The window stays app-paintable and transparent so the rounded
+            # corners work; the body is drawn by the box inside it, exactly as
+            # the bar draws its own pill. Painting the window itself would not
+            # work: app_paintable suppresses its CSS background.
             win.set_app_paintable(True)
             visual = win.get_screen().get_rgba_visual()
             if visual:
                 win.set_visual(visual)
+
             label = Gtk.Label()
             label.set_text(model.tooltip)
             label.set_xalign(0.0)
+            body = Gtk.EventBox(name="tip")
+            body.add(label)
             for m in ("top", "bottom", "start", "end"):
-                getattr(label, f"set_margin_{m}")(8)
-            win.add(label)
+                getattr(label, f"set_margin_{m}")(9)
+            win.add(body)
             win.show_all()
             x, y = self.get_position()
             win.move(x, y + HEIGHT + 5)
