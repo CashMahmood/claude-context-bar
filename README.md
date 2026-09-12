@@ -5,11 +5,8 @@ used in your running [Claude Code](https://claude.com/claude-code) session — b
 session name, not just by folder. Linux, macOS and Windows.
 
 <p align="center">
-  <img src="docs/preview.png" alt="GTK backend at 17%, 62% and 91% used" width="194">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/preview-tk.png" alt="Tk backend" width="194">
+  <img src="docs/demo.gif" alt="The gauge filling from 2% to 98%, turning amber then red" width="404">
 </p>
-<p align="center"><sub>GTK (Linux) on the left, Tk (macOS/Windows) on the right — both at actual size, 150&times;26&nbsp;px.</sub></p>
 
 It sits at the top-centre of the screen, refreshes every few seconds, and turns
 amber then red as the window fills up. Hover for the session name; click to
@@ -52,7 +49,14 @@ toolkits, chosen automatically and overridable with `--backend gtk|tk`.
 | macOS | Tk | Backend verified running; macOS integration untested |
 | Windows | Tk | Backend verified running; Windows integration untested |
 
-Both backends have been run and captured (the two images above). What remains
+<p align="center">
+  <img src="docs/preview.png" alt="GTK backend at 17%, 62% and 91% used" width="194">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/preview-tk.png" alt="Tk backend" width="194">
+</p>
+<p align="center"><sub>GTK (Linux) on the left, Tk (macOS/Windows) on the right — both at actual size, 150&times;26&nbsp;px.</sub></p>
+
+Both backends have been run and captured. What remains
 unverified on macOS and Windows is the platform integration around them: window
 stacking for a borderless always-on-top window, the LaunchAgent and Startup
 entries, and the desktop launchers. I own neither machine, so reports from
@@ -234,17 +238,23 @@ bin/claude-context-bar     the overlay: shared core, GTK backend, Tk backend, CL
 bin/claude-context-probe   the reader; no GUI, no platform-specific calls
 share/                     the mark as SVG (GTK) and PNG (Tk, which cannot antialias)
 desktop/                   Linux .desktop entries
-docs/render-preview.py     regenerates the GTK preview from the real widgets
+docs/render-preview.py     regenerates the still previews from the real widgets
+docs/render-demo.py        regenerates demo.gif, including its own GIF encoder
+docs/render-social.py      regenerates the 1280x640 social card
 tests/smoke_tk.py          runs the Tk backend against a stubbed toolkit
 ```
 
 ```bash
-python3 docs/render-preview.py   # regenerate the preview image
+python3 docs/render-preview.py   # the two still images
+python3 docs/render-demo.py      # the animation
+python3 docs/render-social.py    # the social card
 python3 tests/smoke_tk.py        # exercise the Tk path with no display
 ```
 
-The preview is rendered from the real widgets rather than mocked up, so it
-cannot drift from the actual design. The smoke test proves the Tk code path runs
+Every image in this README is rendered from the real widgets rather than mocked
+up, so none of them can drift from the actual design. `render-demo.py` carries a
+small GIF89a encoder (palette median-cut plus LZW) so the animation needs no
+ffmpeg, ImageMagick or Pillow — GTK is the only dependency. The smoke test proves the Tk code path runs
 without a display; to *see* it, run `--backend tk` against a real Tk.
 
 ## Known limitations
