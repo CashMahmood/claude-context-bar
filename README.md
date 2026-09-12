@@ -23,8 +23,9 @@ number in view while you work, so a compaction never takes you by surprise.
 
 ## Features
 
-- **Named sessions.** Reads the session's own title — *"Set up YunCore APH4-BE3600"*,
-  not `-home-user-project` — and shows it in the tooltip and the picker.
+- **Named sessions.** Shows the name you gave a session — *"RAPTOR WIFI (Main)"* —
+  not `-home-user-project`. A name you set yourself always beats the
+  auto-generated one, which often describes only the session's first minute.
 - **Small on purpose.** 150×26 px. It reports a number, it does not narrate.
 - **Session picker.** Click the bar to switch between recent sessions, or leave
   it on **Auto** to follow whichever one you are using right now.
@@ -126,8 +127,14 @@ Claude Code appends a JSON Lines transcript per session under
    assistant turn's prompt *is* the live context. The reply's `output_tokens`
    are deliberately excluded, so the figure tracks `/context` rather than
    running slightly ahead of it;
-3. takes the session name from the newest `aiTitle` record and the project from
-   `cwd`.
+3. takes the project from `cwd`, and the session name from whichever source
+   wins: a name **you** set is stored outside the transcript, in
+   `~/.claude/jobs/<id>/state.json` as `name` with `nameSource: "user"` (or
+   `customTitle`), and takes priority over the `aiTitle` record that Claude
+   Code generates. That directory is named with only the first eight
+   characters of the session id, so the lookup keys off the ids inside the
+   file — `resumeSessionId` included, because resuming a session starts a new
+   transcript while the job keeps its name.
 
 The context window is read from `~/.claude/settings.json`, because the
 transcript records the bare model id (`claude-opus-5`) while only the settings

@@ -12,6 +12,7 @@ printed.
 import json, os, sys, glob, time
 
 ROOT     = os.path.expanduser("~/.claude/projects")
+JOBS     = os.path.expanduser("~/.claude/jobs")
 TAIL     = 400_000       # bytes of transcript to scan back through
 HEAD     = 64_000        # bytes to scan from the start
 MAX_AGE  = 14 * 86400    # ignore sessions older than this in --list
@@ -58,6 +59,47 @@ def scan(path, key, newest_first=True):
             if isinstance(val, str) and val.strip():
                 return val.strip()
     return ""
+
+
+_JOB_NAMES = None
+
+
+def job_names():
+    """Map session id -> (name, source) for every named session.
+
+    A session you rename in Claude Code is recorded outside the transcript, in
+    ~/.claude/jobs/<id>/state.json. That directory is only the first eight
+    characters of the id, so index by the ids stored inside the file instead --
+    including resumeSessionId, since resuming starts a fresh transcript while
+    the job keeps the name you gave it.
+    """
+    names = {}
+    for p in glob.glob(os.path.join(JOBS, "*", "state.json")):
+        try:
+            with open(p) as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        custom = d.get("customTitle")
+        if isinstance(custom, str) and custom.strip():
+            entry = (custom.strip(), "user")
+        else:
+            n = d.get("name")
+            if not (isinstance(n, str) and n.strip()):
+                continue
+            entry = (n.strip(), d.get("nameSource") or "")
+        for key in ("sessionId", "resumeSessionId"):
+            sid = d.get(key)
+            if isinstance(sid, str) and sid:
+                names[sid] = entry
+    return names
+
+
+def job_name(session_id):
+    global _JOB_NAMES
+    if _JOB_NAMES is None:
+        _JOB_NAMES = job_names()
+    return _JOB_NAMES.get(session_id, ("", ""))
 
 
 def find_usage(node):
@@ -108,7 +150,8 @@ def measure(path):
     """Context usage for one transcript."""
     out = {"id": os.path.splitext(os.path.basename(path or ""))[0],
            "path": path or "", "project": "", "title": "", "used": 0,
-           "limit": 200_000, "pct_used": 0.0, "pct_left": 100.0,
+           "title_source": "", "limit": 200_000,
+           "pct_used": 0.0, "pct_left": 100.0,
            "model": "", "age_s": -1, "ok": False}
     if not path or not os.path.exists(path):
         return out
@@ -127,9 +170,15 @@ def measure(path):
             usage, model = u, m
             break
 
-    # "aiTitle" is the name Claude Code shows for the session; "cwd" is on
-    # every entry, though the opening records may be summaries without one.
-    out["title"] = scan(path, "aiTitle")
+    # "aiTitle" is the name Claude Code generates; a name you set yourself
+    # lives in the job state instead and must win. "cwd" is on every entry,
+    # though the opening records may be summaries without one.
+    ai_title = scan(path, "aiTitle")
+    name, source = job_name(out["id"])
+    if name and (source == "user" or not ai_title):
+        out["title"], out["title_source"] = name, source or "job"
+    else:
+        out["title"], out["title_source"] = ai_title, "ai" if ai_title else ""
     out["project"] = scan(path, "cwd")
     out["age_s"] = int(time.time() - os.path.getmtime(path))
 
