@@ -32,9 +32,10 @@ number in view while you work, so a compaction never takes you by surprise.
 - **Show / hide.** `Super+Shift+C` from anywhere, a menu item, or the CLI.
 - **Colour-coded headroom.** Green below 50 % used, amber beyond, red past 80 %.
 - **Multi-window aware.** Detects both the 200 k and 1 M context windows.
-- **Reads numbers only.** It parses token counts, the session id, its title and
-  its working directory. It never reads, stores or transmits message content,
-  and it makes no network calls of any kind.
+- **Reads numbers only.** It extracts token counts, the session id, its title
+  and its working directory, and nothing else. Message content is never parsed,
+  stored or transmitted, and it makes no network calls of any kind — see
+  [Security and privacy](#security-and-privacy).
 
 ## Requirements
 
@@ -140,6 +141,29 @@ The context window is read from `~/.claude/settings.json`, because the
 transcript records the bare model id (`claude-opus-5`) while only the settings
 file keeps the `[1m]` suffix that separates the 1 M window from the 200 k one.
 If the measured usage exceeds the assumed limit, it corrects itself upward.
+
+## Security and privacy
+
+It runs entirely on your machine as your own user.
+
+- **No network access.** There is no HTTP client, no socket, no telemetry. The
+  only thing it executes is `gsettings`, to register the keyboard shortcut.
+- **No shell.** Every subprocess call passes an argument list, never a shell
+  string, so nothing is interpolated into a command line.
+- **Your transcripts stay shut.** The reader pulls four values out of a
+  session file — token counts, session id, title and working directory. It
+  never parses or emits message content.
+- **Signals only its own processes.** `/proc` exposes every user's processes,
+  so instance discovery checks the owning uid before signalling anything.
+- **Private state.** The pinned-session file and the visibility flag are
+  written `0600`.
+- **Launchers are pinned to an absolute path**, so nothing earlier on `PATH`
+  can shadow the binary.
+- **Your keybindings are left alone.** Installing reuses its own slot instead
+  of appending duplicates, uninstalling removes only its own, and it refuses to
+  rewrite the list at all if it finds an entry it does not recognise.
+- **No root, ever.** Neither script uses `sudo`, and everything installs under
+  your home directory.
 
 ## Known limitations
 

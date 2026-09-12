@@ -13,7 +13,7 @@ Forced onto XWayland: a Wayland compositor gives a normal client no say in its
 own position or stacking, while the X11 path honours both. Drawn with plain GTK
 widgets and CSS, so it needs no cairo bindings.
 """
-import os, sys, json, signal, subprocess
+import os, re, sys, json, signal, subprocess
 
 os.environ.setdefault("GDK_BACKEND", "x11")
 
@@ -110,10 +110,16 @@ def load_config():
 def save_config(cfg):
     try:
         os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
-        with open(CONFIG, "w") as fh:
+        with open_private(CONFIG) as fh:
             json.dump(cfg, fh)
     except OSError:
         pass
+
+
+def open_private(path):
+    """Open for writing at 0600: these files are ours, not the group's."""
+    return os.fdopen(
+        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w")
 
 
 def write_state(visible):
@@ -121,7 +127,7 @@ def write_state(visible):
     its own; it reads this instead to decide whether a toggle is needed."""
     try:
         os.makedirs(os.path.dirname(STATE), exist_ok=True)
-        with open(STATE, "w") as fh:
+        with open_private(STATE) as fh:
             fh.write("visible" if visible else "hidden")
     except OSError:
         pass
@@ -340,15 +346,19 @@ class ContextBar(Gtk.Window):
 
 # -- out-of-process control ------------------------------------------------
 def running_pids():
-    me = os.getpid()
+    me, uid = os.getpid(), os.getuid()
     pids = []
     for entry in os.listdir("/proc"):
         if not entry.isdigit() or int(entry) == me:
             continue
+        proc = f"/proc/{entry}"
         try:
-            with open(f"/proc/{entry}/cmdline", "rb") as fh:
+            # /proc lists every user's processes; never signal anyone else's.
+            if os.stat(proc).st_uid != uid:
+                continue
+            with open(f"{proc}/cmdline", "rb") as fh:
                 cmd = fh.read().decode("utf-8", "ignore")
-            with open(f"/proc/{entry}/comm") as fh:
+            with open(f"{proc}/comm") as fh:
                 comm = fh.read().strip()
         except OSError:
             continue
@@ -363,6 +373,25 @@ def running_pids():
     return pids
 
 
+def signal_pids(pids, sig):
+    """Signal our own instances, tolerating a process that exits mid-scan."""
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def keybinding_paths(raw):
+    """Parse the gsettings list, refusing anything that is not a plain dconf
+    path so a malformed entry can never be written back into the user's
+    keybindings."""
+    paths = [p.strip().strip("'\"") for p in
+             raw.strip().strip("[]").split(",") if p.strip() not in ("", "@as")]
+    safe = [p for p in paths if re.fullmatch(r"/[A-Za-z0-9/_.:-]+/", p)]
+    return safe, len(safe) != len(paths)
+
+
 def install_hotkey():
     """Bind Super+Shift+C to --toggle via a GNOME custom keybinding."""
     base = "org.gnome.settings-daemon.plugins.media-keys"
@@ -370,9 +399,10 @@ def install_hotkey():
     cmd = f"{os.path.abspath(sys.argv[0])} --toggle"
 
     existing = subprocess.run(["gsettings", "get", base, "custom-keybindings"],
-                              capture_output=True, text=True).stdout.strip()
-    paths = [p.strip().strip("'\"") for p in
-             existing.strip("[]").split(",") if p.strip() not in ("", "@as")]
+                              capture_output=True, text=True).stdout
+    paths, dropped = keybinding_paths(existing)
+    if dropped:
+        sys.exit("refusing to rewrite custom-keybindings: unexpected entry")
 
     # Reuse our own slot if it is already registered, rather than piling up.
     slot = None
@@ -402,9 +432,10 @@ def remove_hotkey():
     """Drop our GNOME custom keybinding, leaving any others untouched."""
     base = "org.gnome.settings-daemon.plugins.media-keys"
     existing = subprocess.run(["gsettings", "get", base, "custom-keybindings"],
-                              capture_output=True, text=True).stdout.strip()
-    paths = [p.strip().strip("'\"") for p in
-             existing.strip("[]").split(",") if p.strip() not in ("", "@as")]
+                              capture_output=True, text=True).stdout
+    paths, dropped = keybinding_paths(existing)
+    if dropped:
+        sys.exit("refusing to rewrite custom-keybindings: unexpected entry")
 
     keep = []
     for p in paths:
@@ -440,27 +471,23 @@ def main():
     pids = running_pids()
 
     if "--quit" in args:
-        for pid in pids:
-            os.kill(pid, signal.SIGTERM)
+        signal_pids(pids, signal.SIGTERM)
         return
 
     if "--hide" in args:
         if read_state() == "visible":
-            for pid in pids:
-                os.kill(pid, signal.SIGUSR1)
+            signal_pids(pids, signal.SIGUSR1)
         return
 
     if any(f in args for f in ("--toggle", "--show")):
         sig = signal.SIGUSR1 if "--toggle" in args else signal.SIGUSR2
-        for pid in pids:
-            os.kill(pid, sig)
+        signal_pids(pids, sig)
         if not pids:                       # nothing to signal; start it
             os.execv(sys.executable, [sys.executable, os.path.abspath(sys.argv[0])])
         return
 
     if pids:            # single instance: reveal the one already running
-        for pid in pids:
-            os.kill(pid, signal.SIGUSR2)
+        signal_pids(pids, signal.SIGUSR2)
         return
 
     ContextBar().show_all()

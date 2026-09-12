@@ -37,6 +37,10 @@ assert "svg" in [f.get_name() for f in GdkPixbuf.Pixbuf.get_formats()], \
 PY
 echo "    GTK 3 + SVG loader present"
 
+# A bare "Exec=claude-context-bar" resolves through PATH, so anything earlier
+# on it could shadow the real binary. Pin the launchers to the absolute path.
+pin_exec() { sed -i "s|^Exec=claude-context-bar|Exec=$BIN/claude-context-bar|" "$1"; }
+
 echo "==> installing"
 mkdir -p "$BIN" "$SHARE" "$ICONS" "$APPS"
 install -m 755 "$SRC/bin/claude-context-bar"   "$BIN/claude-context-bar"
@@ -44,6 +48,7 @@ install -m 755 "$SRC/bin/claude-context-probe" "$BIN/claude-context-probe"
 install -m 644 "$SRC/share/logo.svg"           "$SHARE/logo.svg"
 install -m 644 "$SRC/share/logo.svg"           "$ICONS/claude-context-bar.svg"
 install -m 644 "$SRC/desktop/claude-context-bar.desktop" "$APPS/claude-context-bar.desktop"
+pin_exec "$APPS/claude-context-bar.desktop"
 echo "    binaries -> $BIN"
 echo "    launcher -> $APPS"
 
@@ -51,6 +56,7 @@ if [ "$with_autostart" = 1 ]; then
   mkdir -p "$AUTOSTART"
   install -m 644 "$SRC/desktop/claude-context-bar-autostart.desktop" \
                  "$AUTOSTART/claude-context-bar.desktop"
+  pin_exec "$AUTOSTART/claude-context-bar.desktop"
   echo "    autostart -> $AUTOSTART"
 fi
 
@@ -59,6 +65,7 @@ if [ "$with_desktop_icon" = 1 ]; then
   if [ -d "$desktop_dir" ]; then
     install -m 755 "$SRC/desktop/claude-context-bar.desktop" \
                    "$desktop_dir/claude-context-bar.desktop"
+    pin_exec "$desktop_dir/claude-context-bar.desktop"
     # GNOME will not run a desktop file it has not been told to trust.
     gio set "$desktop_dir/claude-context-bar.desktop" \
         metadata::trusted true 2>/dev/null || true
