@@ -8,8 +8,17 @@ macOS or Windows run can do that.
 
     python3 tests/smoke_tk.py
 """
-import os, sys, types, importlib.util
+import os, sys, types, tempfile, importlib.util
 from importlib.machinery import SourceFileLoader
+
+# Point the module at a scratch config and cache BEFORE importing it, since it
+# resolves those paths at import time. Without this the test would clobber the
+# heartbeat of a bar that is actually running.
+_scratch = tempfile.mkdtemp(prefix="ccb-smoke-")
+os.environ["XDG_CONFIG_HOME"] = os.path.join(_scratch, "config")
+os.environ["XDG_CACHE_HOME"] = os.path.join(_scratch, "cache")
+if sys.platform in ("win32", "darwin"):
+    os.environ["HOME"] = os.environ["USERPROFILE"] = _scratch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BAR = os.path.join(HERE, os.pardir, "bin", "claude-context-bar")
@@ -185,6 +194,7 @@ def main():
     if bar.read_state() != "visible":
         problems.append(f"show command ignored (state={bar.read_state()})")
     bar.clear_runtime()
+    __import__("shutil").rmtree(_scratch, ignore_errors=True)
 
     print(f"  mark           : {'PNG ' + os.path.basename(calls['photo']) if images else str(len(polys)) + ' drawn rays'}")
     print(f"  track + fill   : {len(rects)}")
