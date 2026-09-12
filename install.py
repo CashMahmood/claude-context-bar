@@ -9,7 +9,11 @@ Options: --no-autostart, --no-hotkey, --no-desktop-icon, --no-start
 On Linux ./install.sh does the same thing and is the better-tested path; this
 script exists so macOS and Windows have one too.
 """
-import os, sys, shutil, subprocess, argparse
+import os, sys, shutil, subprocess, argparse, importlib.util
+from importlib.machinery import SourceFileLoader
+
+# Loading the bar to read its paths must not leave a .pyc beside it.
+sys.dont_write_bytecode = True
 
 APP = "claude-context-bar"
 IS_WIN = sys.platform == "win32"
@@ -213,10 +217,23 @@ def uninstall(args):
         gone.append(os.path.join(t["apps"], f"{APP}.desktop"))
     if "icons" in t:
         gone.append(os.path.join(t["icons"], f"{APP}.svg"))
+    # the config and runtime files the bar writes for itself
+    loader = SourceFileLoader(APP, bar)
+    try:
+        mod = importlib.util.module_from_spec(
+            importlib.util.spec_from_loader(APP, loader))
+        loader.exec_module(mod)
+        gone += [mod.CONFIG, mod.STATE, mod.COMMAND, mod.INSTANCE]
+    except Exception:
+        pass
     for p in gone:
         if os.path.exists(p):
             os.remove(p)
             print(f"    removed {p}")
+    stray = os.path.join(t["bin"], "__pycache__")
+    if os.path.isdir(stray):
+        shutil.rmtree(stray, ignore_errors=True)
+        print(f"    removed {stray}")
     if os.path.isdir(t["share"]):
         shutil.rmtree(t["share"], ignore_errors=True)
         print(f"    removed {t['share']}")

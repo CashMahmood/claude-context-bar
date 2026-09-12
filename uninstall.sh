@@ -20,7 +20,9 @@ rm -fv "$BIN/claude-context-bar" \
        "$HOME/.config/autostart/claude-context-bar.desktop" \
        "$HOME/.local/share/icons/hicolor/scalable/apps/claude-context-bar.svg" \
        "$HOME/.config/claude-context-bar.json" \
-       "$HOME/.cache/claude-context-bar.state" 2>/dev/null
+       "$HOME/.cache/claude-context-bar.state" \
+       "$HOME/.cache/claude-context-bar.command" \
+       "$HOME/.cache/claude-context-bar.instance" 2>/dev/null
 rm -rfv "$HOME/.local/share/claude-context-bar"
 
 command -v update-desktop-database >/dev/null && \

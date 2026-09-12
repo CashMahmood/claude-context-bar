@@ -7,6 +7,8 @@ away from what the bar actually looks like.
 import os, sys, importlib.util
 from importlib.machinery import SourceFileLoader
 
+sys.dont_write_bytecode = True      # keep __pycache__ out of the source tree
+
 os.environ.setdefault("GDK_BACKEND", "x11")
 
 HERE = os.path.dirname(os.path.abspath(__file__))

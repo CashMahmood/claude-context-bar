@@ -102,6 +102,14 @@ def job_name(session_id):
     return _JOB_NAMES.get(session_id, ("", ""))
 
 
+def num(d, key):
+    """Token counts, defensively. A transcript written by a newer or partly
+    failed run can carry a null or a string here, and arithmetic on that
+    crashed the whole reader."""
+    v = d.get(key, 0)
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+
+
 def find_usage(node):
     """Walk a decoded JSON line; return (usage_dict, model_str) if present."""
     usage = model = None
@@ -186,15 +194,16 @@ def measure(path):
         # The live context is the prompt of the last assistant turn: fresh
         # input plus everything replayed from cache. Its reply is excluded,
         # so this matches what /context reports.
-        used = (usage.get("input_tokens", 0)
-                + usage.get("cache_read_input_tokens", 0)
-                + usage.get("cache_creation_input_tokens", 0))
+        used = (num(usage, "input_tokens")
+                + num(usage, "cache_read_input_tokens")
+                + num(usage, "cache_creation_input_tokens"))
         lim = limit_for(model)
         if used > lim:            # session is on a bigger window than guessed
             lim = 1_000_000
         pct = 100.0 * used / lim
         out.update(used=used, limit=lim, pct_used=round(pct, 1),
-                   pct_left=round(100.0 - pct, 1), model=model or "", ok=True)
+                   pct_left=round(100.0 - pct, 1), model=model or "",
+                   ok=used > 0)   # a zero total means malformed, not idle
     return out
 
 

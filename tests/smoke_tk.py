@@ -11,6 +11,8 @@ macOS or Windows run can do that.
 import os, sys, types, tempfile, importlib.util
 from importlib.machinery import SourceFileLoader
 
+sys.dont_write_bytecode = True      # keep __pycache__ out of the source tree
+
 # Point the module at a scratch config and cache BEFORE importing it, since it
 # resolves those paths at import time. Without this the test would clobber the
 # heartbeat of a bar that is actually running.

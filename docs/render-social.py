@@ -7,6 +7,8 @@ shared. The gauge in it is the real widget, not a mock-up.
 import os, sys, importlib.util
 from importlib.machinery import SourceFileLoader
 
+sys.dont_write_bytecode = True      # keep __pycache__ out of the source tree
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H, SCALE = 1280, 640, 2
 

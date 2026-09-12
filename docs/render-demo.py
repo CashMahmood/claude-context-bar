@@ -10,6 +10,8 @@ ffmpeg or Pillow, so this needs nothing beyond GTK.
 import os, sys, importlib.util
 from importlib.machinery import SourceFileLoader
 
+sys.dont_write_bytecode = True      # keep __pycache__ out of the source tree
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCALE = 2                      # render at 2x so it is legible in a README
 FRAME_MS = 70

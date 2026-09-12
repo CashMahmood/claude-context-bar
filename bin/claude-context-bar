@@ -514,7 +514,6 @@ def run_gtk(model):
 def run_tk(model):
     import tkinter as tk
 
-    KEY = "#010203"                       # colour punched out for transparency
     root = tk.Tk()
     root.title("Claude Context Bar")
     root.overrideredirect(True)
@@ -539,12 +538,6 @@ def run_tk(model):
     canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT,
                        highlightthickness=0, bd=0, bg=SHELL_BG)
     canvas.pack()
-
-    def round_rect(x1, y1, x2, y2, r, **kw):
-        pts = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r,
-               x2, y2, x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r,
-               x1, y1 + r, x1, y1]
-        return canvas.create_polygon(pts, smooth=True, **kw)
 
     pad = 10
     logo_r = LOGO_PX / 2.0
@@ -630,6 +623,7 @@ def run_tk(model):
             menu.grab_release()
 
     canvas.bind("<Button-1>", popup)
+    canvas.bind("<Button-2>", popup)      # right-click on macOS
     canvas.bind("<Button-3>", popup)
 
     visible = {"on": True}
@@ -781,6 +775,9 @@ def pick_backend(pref):
 
 
 def start_gui(backend):
+    # Discard anything queued before this instance existed. A "quit" left
+    # behind by a crash would otherwise kill the new bar the moment it starts.
+    take_commands()
     model = Model()
     try:
         (run_gtk if backend == "gtk" else run_tk)(model)
