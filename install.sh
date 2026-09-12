@@ -12,13 +12,15 @@ AUTOSTART="$HOME/.config/autostart"
 with_autostart=1
 with_hotkey=1
 with_desktop_icon=1
+with_start=1
 for arg in "$@"; do
   case "$arg" in
     --no-autostart)    with_autostart=0 ;;
     --no-hotkey)       with_hotkey=0 ;;
     --no-desktop-icon) with_desktop_icon=0 ;;
+    --no-start)        with_start=0 ;;
     -h|--help)
-      echo "usage: install.sh [--no-autostart] [--no-hotkey] [--no-desktop-icon]"
+      echo "usage: install.sh [--no-autostart] [--no-hotkey] [--no-desktop-icon] [--no-start]"
       exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -91,13 +93,15 @@ case ":$PATH:" in
      echo "     export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
 
-echo
-echo "==> starting"
-"$BIN/claude-context-bar" --quit 2>/dev/null || true
-sleep 1
-setsid nohup "$BIN/claude-context-bar" >/dev/null 2>&1 < /dev/null &
-sleep 2
-echo "    $("$BIN/claude-context-bar" --status)"
+if [ "$with_start" = 1 ]; then
+  echo
+  echo "==> starting"
+  "$BIN/claude-context-bar" --quit 2>/dev/null || true
+  sleep 1
+  setsid nohup "$BIN/claude-context-bar" >/dev/null 2>&1 < /dev/null &
+  sleep 2
+  echo "    $("$BIN/claude-context-bar" --status)"
+fi
 echo
 echo "Done. The bar sits at the top-centre of your screen."
 echo "  click it        -> pick which session to track"

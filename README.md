@@ -1,8 +1,8 @@
 # Claude Context Bar
 
-A minimal always-on-top overlay for Linux that shows how much **context window**
-is left in your running [Claude Code](https://claude.com/claude-code) session —
-by session name, not just by folder.
+A minimal always-on-top overlay that shows how much **context window** you have
+used in your running [Claude Code](https://claude.com/claude-code) session — by
+session name, not just by folder. Runs on Linux, macOS and Windows.
 
 <p align="center">
   <img src="docs/preview.png" alt="The bar at 17%, 62% and 91% of the context window used" width="194">
@@ -37,27 +37,56 @@ number in view while you work, so a compaction never takes you by surprise.
   stored or transmitted, and it makes no network calls of any kind — see
   [Security and privacy](#security-and-privacy).
 
-## Requirements
+## Platform support
 
-- Linux with X11 **or** Wayland (it runs through XWayland automatically)
-- Python 3.8+
-- GTK 3 Python bindings and an SVG loader
+Python 3.8+ is the only hard requirement. The gauge draws through one of two
+toolkits, picked automatically.
 
-| Distro | Command |
+| Platform | Toolkit | Status |
+| --- | --- | --- |
+| Linux (GNOME/Wayland, X11) | GTK 3, falls back to Tk | **Tested** — developed on Ubuntu 24.04 / GNOME 46 / Wayland |
+| macOS | Tk | Untested — please report what you find |
+| Windows | Tk | Untested — please report what you find |
+
+I do not own a Mac or a Windows machine. Both are written to the documented
+behaviour of Tk and each platform's autostart conventions, and the shared parts
+— reading sessions, the picker, show/hide, single-instance — are exercised on
+Linux. Bug reports from either are very welcome.
+
+Force a toolkit with `--backend gtk` or `--backend tk`.
+
+### Getting a toolkit
+
+| Platform | Command |
 | --- | --- |
 | Debian / Ubuntu | `sudo apt install python3-gi gir1.2-gtk-3.0 librsvg2-common` |
 | Fedora | `sudo dnf install python3-gobject gtk3 librsvg2` |
 | Arch | `sudo pacman -S python-gobject gtk3 librsvg` |
-
-Developed and tested on Ubuntu 24.04, GNOME Shell 46, Wayland.
+| Any Linux, Tk instead | `sudo apt install python3-tk` |
+| macOS | Tk ships with the [python.org](https://python.org) build; with Homebrew, `brew install python-tk` |
+| Windows | Tk ships with the python.org installer (the Microsoft Store build may omit it) |
 
 ## Install
 
 ```bash
 git clone https://github.com/CashMahmood/claude-context-bar.git
 cd claude-context-bar
+```
+
+**Linux** — the better-tested path:
+
+```bash
 ./install.sh
 ```
+
+**macOS and Windows**:
+
+```bash
+python3 install.py          # python install.py on Windows
+```
+
+Both accept `--no-autostart`, `--no-hotkey`, `--no-desktop-icon` and
+`--no-start`. `install.py --uninstall` reverses it.
 
 Everything lands under your home directory — no root, no system files:
 
@@ -83,8 +112,13 @@ Click the bar to open the menu. Everything is also available from the CLI:
 | `claude-context-bar --show` / `--hide` | force one or the other |
 | `claude-context-bar --status` | running? visible? |
 | `claude-context-bar --quit` | stop it |
-| `claude-context-bar --install-hotkey` | bind `Super+Shift+C` |
+| `claude-context-bar --backend gtk\|tk` | force a toolkit |
+| `claude-context-bar --install-hotkey` | bind `Super+Shift+C` (GNOME only) |
 | `claude-context-bar --remove-hotkey` | unbind it |
+
+The global hotkey is GNOME-only. On macOS bind
+`claude-context-bar --toggle` through Shortcuts or Automator; on Windows, set a
+shortcut key on the desktop launcher.
 
 The reader works standalone, and prints JSON:
 
@@ -198,6 +232,17 @@ mocked up, so it cannot drift away from the actual design:
 ```bash
 python3 docs/render-preview.py
 ```
+
+The Tk backend has a smoke test that runs it against a stubbed toolkit, so the
+whole code path — geometry, refresh cycle, command pump, menu, tooltip — is
+exercised on a machine with neither Tk nor a display:
+
+```bash
+python3 tests/smoke_tk.py
+```
+
+It proves the code runs. It proves nothing about how it looks, which is why
+macOS and Windows are marked untested above.
 
 ## Contributing
 
