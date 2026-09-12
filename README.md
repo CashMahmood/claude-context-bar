@@ -152,6 +152,7 @@ Set these in the environment before launching:
 | `CLAUDE_BAR_W` | `150` | width in pixels |
 | `CLAUDE_BAR_H` | `26` | height in pixels |
 | `CLAUDE_BAR_Y` | `38` | distance from the top edge |
+| `CLAUDE_BAR_X` | auto | force the horizontal position; useful on multi-monitor setups, where Tk sees one wide desktop and centres on the seam |
 | `CLAUDE_BAR_INTERVAL` | `4` | refresh seconds |
 | `CLAUDE_BAR_CLICKTHROUGH` | unset | `1` lets clicks pass through (GTK only; the menu stops working, so drive it by hotkey) |
 | `CLAUDE_CTX_LIMIT` | auto | force the window size, e.g. `200000` |
@@ -242,6 +243,7 @@ docs/render-preview.py     regenerates the still previews from the real widgets
 docs/render-demo.py        regenerates demo.gif, including its own GIF encoder
 docs/render-social.py      regenerates the 1280x640 social card
 tests/smoke_tk.py          runs the Tk backend against a stubbed toolkit
+tests/smoke_platforms.py   runs the macOS and Windows branches on any machine
 ```
 
 ```bash
@@ -249,6 +251,7 @@ python3 docs/render-preview.py   # the two still images
 python3 docs/render-demo.py      # the animation
 python3 docs/render-social.py    # the social card
 python3 tests/smoke_tk.py        # exercise the Tk path with no display
+python3 tests/smoke_platforms.py # exercise the macOS and Windows branches
 ```
 
 Every image in this README is rendered from the real widgets rather than mocked
@@ -267,6 +270,12 @@ without a display; to *see* it, run `--backend tk` against a real Tk.
 - **The percentage is of the raw context window.** Claude Code reserves an
   auto-compact buffer (33 k on a 1 M window) that it reports separately, so
   compaction begins slightly before the bar reads 100 %.
+- **Multi-monitor placement is approximate.** GTK centres on the primary
+  monitor; Tk sees one wide desktop and would centre on the seam. Set
+  `CLAUDE_BAR_X` to place it explicitly.
+- **Display scaling is untested.** On a HiDPI or fractionally scaled desktop the
+  bar may not land where you expect; `CLAUDE_BAR_X` / `CLAUDE_BAR_Y` are the
+  workaround.
 - **Tk draws a square-cornered pill.** Tk cannot antialias canvas polygons, so a
   drawn rounded corner comes out visibly stair-stepped; a square edge reads as
   deliberate instead.

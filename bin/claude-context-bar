@@ -25,6 +25,7 @@ APP = "claude-context-bar"
 WIDTH    = int(os.environ.get("CLAUDE_BAR_W", 150))
 HEIGHT   = int(os.environ.get("CLAUDE_BAR_H", 26))
 Y_OFFSET = int(os.environ.get("CLAUDE_BAR_Y", 38))
+X_FORCE  = os.environ.get("CLAUDE_BAR_X")            # "" means auto-centre
 INTERVAL = int(os.environ.get("CLAUDE_BAR_INTERVAL", 4))
 PASSTHRU = os.environ.get("CLAUDE_BAR_CLICKTHROUGH") == "1"
 
@@ -343,6 +344,12 @@ def load_gtk():
     from gi.repository import (Gtk as _Gtk, Gdk as _Gdk, GLib as _GLib,
                                GdkPixbuf as _Pix)
     Gtk, Gdk, GLib, GdkPixbuf = _Gtk, _Gdk, _GLib, _Pix
+    # Forcing the X11 backend fails outright where XWayland is not installed;
+    # say so instead of aborting with a raw GTK error.
+    if not Gtk.init_check()[0]:
+        raise RuntimeError(
+            f"GTK could not open a display on backend "
+            f"{os.environ.get('GDK_BACKEND', 'default')}")
 
 
 def apply_css(screen):
@@ -436,11 +443,16 @@ def run_gtk(model):
             self.reposition()
 
         def reposition(self):
-            monitor = Gdk.Display.get_default().get_primary_monitor()
-            geo = monitor.get_geometry() if monitor else None
-            if geo:
-                self.move(geo.x + max(0, (geo.width - WIDTH) // 2),
-                          geo.y + Y_OFFSET)
+            display = Gdk.Display.get_default()
+            # Some multi-head setups have no primary monitor at all, which
+            # used to leave the bar wherever the compositor felt like.
+            monitor = display.get_primary_monitor() or display.get_monitor(0)
+            if monitor is None:
+                return
+            geo = monitor.get_geometry()
+            x = (int(X_FORCE) if X_FORCE
+                 else geo.x + max(0, (geo.width - WIDTH) // 2))
+            self.move(x, geo.y + Y_OFFSET)
 
         def pump(self):
             for cmd in take_commands():
@@ -569,7 +581,10 @@ def run_tk(model):
                                        if IS_WIN else "DejaVu Sans", 9, "bold"))
 
     def place():
-        x = max(0, (root.winfo_screenwidth() - WIDTH) // 2)
+        # Tk reports the whole desktop, so on a multi-monitor setup centring
+        # lands on the seam. CLAUDE_BAR_X is the escape hatch.
+        x = (int(X_FORCE) if X_FORCE
+             else max(0, (root.winfo_screenwidth() - WIDTH) // 2))
         root.geometry(f"{WIDTH}x{HEIGHT}+{x}+{Y_OFFSET}")
 
     place()
@@ -781,7 +796,7 @@ def start_gui(backend):
     model = Model()
     try:
         (run_gtk if backend == "gtk" else run_tk)(model)
-    except ImportError as exc:
+    except (ImportError, RuntimeError) as exc:
         other = "tk" if backend == "gtk" else "gtk"
         sys.exit(f"{backend} backend unavailable ({exc}).\n"
                  f"Install it, or try --backend {other}.\n"
