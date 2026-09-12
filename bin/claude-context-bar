@@ -23,7 +23,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
 
-WIDTH    = int(os.environ.get("CLAUDE_BAR_W", 360))
+WIDTH    = int(os.environ.get("CLAUDE_BAR_W", 150))
 HEIGHT   = int(os.environ.get("CLAUDE_BAR_H", 26))
 Y_OFFSET = int(os.environ.get("CLAUDE_BAR_Y", 38))   # clears the GNOME top bar
 INTERVAL = int(os.environ.get("CLAUDE_BAR_INTERVAL", 4))
@@ -61,7 +61,7 @@ window {{ background-color: transparent; }}
     font-size: 11px;
     font-weight: bold;
 }}
-#name.stale, #pct.stale {{ color: rgba(255,255,255,0.34); }}
+#pct.stale {{ color: rgba(255,255,255,0.34); }}
 
 #track {{
     background-color: rgba(255,255,255,0.13);
@@ -181,14 +181,7 @@ class ContextBar(Gtk.Window):
                 pass
         logo.set_valign(Gtk.Align.CENTER)
 
-        # --- session name, takes the slack ---
-        self.name = Gtk.Label(name="name")
-        self.name.set_ellipsize(3)            # Pango.EllipsizeMode.END
-        self.name.set_max_width_chars(24)
-        self.name.set_xalign(0.0)
-        self.name.set_valign(Gtk.Align.CENTER)
-
-        # --- slim track, hard right of the name ---
+        # --- slim track; the name lives in the tooltip and the menu ---
         self.fill = Gtk.EventBox(name="fill")
         self.fill.set_size_request(0, TRACK_H)
         placer = Gtk.Fixed()
@@ -207,10 +200,10 @@ class ContextBar(Gtk.Window):
         self.pct.set_valign(Gtk.Align.CENTER)
 
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        row.set_halign(Gtk.Align.CENTER)   # keep the group centred in the pill
         row.set_margin_start(10)
         row.set_margin_end(11)
         row.pack_start(logo, False, False, 0)
-        row.pack_start(self.name, True, True, 0)
         row.pack_start(track_wrap, False, False, 0)
         row.pack_start(self.pct, False, False, 0)
 
@@ -263,10 +256,9 @@ class ContextBar(Gtk.Window):
 
         ok   = s.get("ok")
         left = s.get("pct_left", 0.0) if ok else 0.0
-        used = s.get("pct_used", 0.0) if ok else 0.0
 
-        if ok and used >= 1:
-            self.fill.set_size_request(max(3, int(TRACK_W * used / 100.0)), TRACK_H)
+        if ok and left >= 1:
+            self.fill.set_size_request(max(3, int(TRACK_W * left / 100.0)), TRACK_H)
             self.fill.show()
         else:
             self.fill.hide()
@@ -277,11 +269,9 @@ class ContextBar(Gtk.Window):
         if ok:
             fc.add_class("ample" if left > 50 else "tight" if left > 20 else "low")
 
-        self.name.set_text(display_name(s) if ok else "no active session")
         self.pct.set_text(f"{left:.0f}%" if ok else "--")
-        for widget in (self.name, self.pct):
-            ctx = widget.get_style_context()
-            (ctx.remove_class if ok else ctx.add_class)("stale")
+        ctx = self.pct.get_style_context()
+        (ctx.remove_class if ok else ctx.add_class)("stale")
 
         project = os.path.basename(s.get("project", "").rstrip("/")) or "unknown"
         self.shell.set_tooltip_text(

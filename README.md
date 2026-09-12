@@ -5,15 +5,17 @@ is left in your running [Claude Code](https://claude.com/claude-code) session �
 by session name, not just by folder.
 
 ```
-          ╭──────────────────────────────────────────────╮
-          │  ✳   Context usage progress bar overlay   ▬▬▬▭▭  88%  │
-          ╰──────────────────────────────────────────────╯
-             ↑            ↑                        ↑       ↑
-           mark     session name                track   headroom
+                    ╭───────────────────────╮
+                    │  ✳   ▬▬▬▬▬▬▬▭▭   86%  │
+                    ╰───────────────────────╯
+                       ↑       ↑         ↑
+                     mark    track    headroom
 ```
 
 It sits at the top-centre of the screen, refreshes every few seconds, and turns
-amber then red as the window fills up.
+amber then red as the window fills up. The track and the number say the same
+thing: both show how much context is **left**, so the bar drains as you use it.
+Hover for the session name, or click to switch sessions.
 
 ## Why
 
@@ -23,7 +25,8 @@ number in view while you work, so a compaction never takes you by surprise.
 ## Features
 
 - **Named sessions.** Reads the session's own title — *"Set up YunCore APH4-BE3600"*,
-  not `-home-user-project`.
+  not `-home-user-project` — and shows it in the tooltip and the picker.
+- **Small on purpose.** 150×26 px. It reports a number, it does not narrate.
 - **Session picker.** Click the bar to switch between recent sessions, or leave
   it on **Auto** to follow whichever one you are using right now.
 - **Show / hide.** `Super+Shift+C` from anywhere, a menu item, or the CLI.
@@ -105,7 +108,7 @@ Set these in the environment before launching:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `CLAUDE_BAR_W` | `360` | width in pixels |
+| `CLAUDE_BAR_W` | `150` | width in pixels |
 | `CLAUDE_BAR_H` | `26` | height in pixels |
 | `CLAUDE_BAR_Y` | `38` | distance from the top edge |
 | `CLAUDE_BAR_INTERVAL` | `4` | refresh seconds |
