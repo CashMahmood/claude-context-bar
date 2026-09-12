@@ -326,6 +326,12 @@ window {{ background-color: transparent; }}
 #fill.ample {{ background-color: {AMPLE}; }}
 #fill.tight {{ background-color: {TIGHT}; }}
 #fill.low   {{ background-color: {LOW}; }}
+#tip {{
+    background-color: rgba(24,24,29,0.97);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 7px;
+}}
+#tip label {{ color: rgba(255,255,255,0.88); font-size: 11px; }}
 """
 
 
@@ -408,6 +414,7 @@ def run_gtk(model):
         def __init__(self):
             super().__init__(type=Gtk.WindowType.POPUP)
             self.muting = False
+            self.tip_win = self.tip_timer = None
             self.set_decorated(False)
             self.set_keep_above(True)
             self.set_skip_taskbar_hint(True)
@@ -426,16 +433,25 @@ def run_gtk(model):
 
             self.shell, self.fill, self.pct = build_shell()
             self.shell.connect("button-press-event", self.on_click)
+            self.shell.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK
+                                  | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+            self.shell.connect("enter-notify-event", self.on_enter)
+            self.shell.connect("leave-notify-event", self.on_leave)
             self.add(self.shell)
 
             self.connect("realize", self.on_realize)
             self.connect("destroy", Gtk.main_quit)
             self.connect("map", lambda *_: write_state(True))
-            self.connect("unmap", lambda *_: write_state(False))
+            self.connect("unmap", self.on_unmap)
 
             self.refresh()
             GLib.timeout_add_seconds(INTERVAL, self.refresh)
             GLib.timeout_add(POLL_MS, self.pump)
+
+        def on_unmap(self, _w):
+            write_state(False)
+            self.cancel_tip()
+            self.hide_tip()
 
         def on_realize(self, _w):
             if PASSTHRU:
@@ -485,10 +501,56 @@ def run_gtk(model):
             self.pct.set_text(model.label)
             ctx = self.pct.get_style_context()
             (ctx.remove_class if ok else ctx.add_class)("stale")
-            self.shell.set_tooltip_text(model.tooltip)
             return True
 
+        # -- tooltip -------------------------------------------------------
+        def on_enter(self, _w, _e):
+            self.cancel_tip()
+            self.tip_timer = GLib.timeout_add(600, self.show_tip)
+            return False
+
+        def on_leave(self, _w, _e):
+            self.cancel_tip()
+            self.hide_tip()
+            return False
+
+        def cancel_tip(self):
+            if getattr(self, "tip_timer", None):
+                GLib.source_remove(self.tip_timer)
+                self.tip_timer = None
+
+        def hide_tip(self):
+            if getattr(self, "tip_win", None):
+                self.tip_win.destroy()
+                self.tip_win = None
+
+        def show_tip(self):
+            self.tip_timer = None
+            self.hide_tip()
+            if not self.get_visible():
+                return False
+            win = Gtk.Window(type=Gtk.WindowType.POPUP, name="tip")
+            win.set_keep_above(True)
+            win.set_accept_focus(False)
+            win.set_app_paintable(True)
+            visual = win.get_screen().get_rgba_visual()
+            if visual:
+                win.set_visual(visual)
+            label = Gtk.Label()
+            label.set_text(model.tooltip)
+            label.set_xalign(0.0)
+            for m in ("top", "bottom", "start", "end"):
+                getattr(label, f"set_margin_{m}")(8)
+            win.add(label)
+            win.show_all()
+            x, y = self.get_position()
+            win.move(x, y + HEIGHT + 5)
+            self.tip_win = win
+            return False
+
         def on_click(self, _w, event):
+            self.cancel_tip()
+            self.hide_tip()
             menu = Gtk.Menu()
             self.muting = True
             for sid, text in model.menu_rows():
